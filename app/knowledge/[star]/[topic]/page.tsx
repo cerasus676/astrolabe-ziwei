@@ -25,9 +25,8 @@ import {
   SLUG_TO_STAR,
 } from '@/lib/seo/knowledge';
 import { SITE_URL } from '@/lib/site';
+import { STAR_DESCRIPTIONS } from '@/lib/ziwei/constants';
 
-// 允许动态参数：如果某个 star/topic 组合不在 generateStaticParams 列表中
-// 也允许运行时按需渲染，避免中文 URL 编码问题导致 404
 export const dynamicParams = false;
 
 export async function generateStaticParams() {
@@ -43,8 +42,10 @@ export async function generateMetadata({ params }: { params: Promise<{ star: str
   const data = getKnowledge(star, topic as TopicKey);
   if (!data.exists) return {};
 
-  const title = `${star}入${data.palaceName}宫 · ${data.topicLabel} · 倪海厦体系详解`;
-  const description = data.parsed.dingdiao
+  const title = topic === 'overview'
+    ? `${star}星 · 星曜百科 · Astrolabe 星盘仪`
+    : `${star}入${data.palaceName} · ${data.topicLabel}`;
+  const description = data.parsed.dingdiao || (topic === 'overview' && STAR_BRIEF_SEO[star])
     || `${star}入${data.palaceName}宫的紫微斗数解读 — 基于倪海厦《天纪》体系与古籍《紫微斗数全集》《骨髓赋》。`;
 
   return {
@@ -74,6 +75,10 @@ export default async function KnowledgePage({ params }: { params: Promise<{ star
   const data = getKnowledge(star, topic as TopicKey);
   if (!data.exists) notFound();
 
+  const isOverview = topic === 'overview';
+  const starDescription = STAR_DESCRIPTIONS[star];
+  const headline = isOverview ? `${star}星` : `${star}入${data.palaceName}`;
+
   // 同主星其他 topic
   const otherTopicsForStar = ALL_TOPICS.filter(t => t !== topic && getKnowledge(star, t).exists);
   // 同 topic 其他主星
@@ -83,12 +88,12 @@ export default async function KnowledgePage({ params }: { params: Promise<{ star
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'Article',
-    headline: `${star}入${data.palaceName}宫 · ${data.topicLabel}`,
+    headline,
     description: data.parsed.dingdiao,
     author: { '@type': 'Organization', name: '紫微研究 · 倪海厦正宗' },
     publisher: {
       '@type': 'Organization',
-      name: '紫微研究',
+      name: 'Astrolabe 星盘仪',
       url: SITE_URL,
     },
     datePublished: '2026-04-28',
@@ -109,7 +114,7 @@ export default async function KnowledgePage({ params }: { params: Promise<{ star
           ← 首页
         </Link>
         <div style={{ fontSize: '12px', color: 'var(--tx-3)', letterSpacing: '0.2em' }}>
-          倪师方法论 · 知识库
+          星曜百科
         </div>
         <Link href="/chart" style={{ fontSize: '12px', color: 'var(--ac)', letterSpacing: '0.2em', textDecoration: 'none' }}>
           起盘 →
@@ -125,16 +130,16 @@ export default async function KnowledgePage({ params }: { params: Promise<{ star
           <span style={{ margin: '0 8px' }}>/</span>
           <span>{star}</span>
           <span style={{ margin: '0 8px' }}>·</span>
-          <span style={{ color: 'var(--ac)' }}>{data.palaceName}宫</span>
+          <span style={{ color: 'var(--ac)' }}>{isOverview ? '星曜简介' : data.palaceName}</span>
         </nav>
 
         {/* 标题区 */}
         <header style={{ marginBottom: '36px' }}>
           <div style={{ fontSize: '11px', color: 'var(--tx-3)', letterSpacing: '0.25em', marginBottom: '8px' }}>
-            {data.topicLabel} · 倪海厦体系详解
+            {isOverview ? '十四主星 · 星曜简介' : data.topicLabel}
           </div>
           <h1 style={{ fontSize: 'clamp(28px, 5vw, 44px)', fontWeight: 700, color: 'var(--tx-0)', letterSpacing: '0.1em', lineHeight: 1.2 }}>
-            {star}入{data.palaceName}宫
+            {headline}
           </h1>
           {STAR_BRIEF_SEO[star] && (
             <p style={{ fontSize: '13px', color: 'var(--tx-2)', marginTop: '14px', lineHeight: 1.8 }}>
@@ -142,6 +147,16 @@ export default async function KnowledgePage({ params }: { params: Promise<{ star
             </p>
           )}
         </header>
+
+        {isOverview && starDescription && (
+          <Section title="星曜属性">
+            <dl className="grid gap-4 text-sm sm:grid-cols-3">
+              <div><dt className="text-[var(--tx-3)]">五行</dt><dd>{starDescription.element}</dd></div>
+              <div><dt className="text-[var(--tx-3)]">星性</dt><dd>{starDescription.nature}</dd></div>
+              <div><dt className="text-[var(--tx-3)]">关键词</dt><dd>{starDescription.keywords}</dd></div>
+            </dl>
+          </Section>
+        )}
 
         {/* 内容 4 段 */}
         {data.parsed.dingdiao && (
@@ -186,10 +201,10 @@ export default async function KnowledgePage({ params }: { params: Promise<{ star
           textAlign: 'center',
         }}>
           <div style={{ fontSize: '14px', color: 'var(--tx-0)', fontWeight: 600, letterSpacing: '0.1em', marginBottom: '6px' }}>
-            想看你自己命盘的{data.topicLabel}？
+            在命盘中查找{star}星
           </div>
           <div style={{ fontSize: '12px', color: 'var(--tx-2)', marginBottom: '16px' }}>
-            输入生辰起盘 · 倪师正宗解读 · AI 答疑伴学
+            输入出生资料，查看星曜所在宫位与四化。
           </div>
           <Link href="/chart" style={{
             display: 'inline-block',
@@ -208,7 +223,7 @@ export default async function KnowledgePage({ params }: { params: Promise<{ star
         </div>
 
         {/* 内链：同主星其他 topic */}
-        <Section title={`${star}星的其他宫位解读`} minimal>
+        {otherTopicsForStar.length > 0 && <Section title={`${star}星的其他宫位解读`} minimal>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
             {otherTopicsForStar.map(t => {
               const d = getKnowledge(star, t);
@@ -231,10 +246,10 @@ export default async function KnowledgePage({ params }: { params: Promise<{ star
               );
             })}
           </div>
-        </Section>
+        </Section>}
 
         {/* 内链：同 topic 其他主星 */}
-        <Section title={`其他主星入${data.palaceName}宫的解读`} minimal>
+        <Section title={isOverview ? '其他主星' : `其他主星入${data.palaceName}的解读`} minimal>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
             {otherStarsForTopic.slice(0, 13).map(s => (
               <Link
@@ -250,7 +265,7 @@ export default async function KnowledgePage({ params }: { params: Promise<{ star
                   textDecoration: 'none',
                 }}
               >
-                {s}入{data.palaceName}
+                {isOverview ? s : `${s}入${data.palaceName}`}
               </Link>
             ))}
           </div>
@@ -276,7 +291,7 @@ export default async function KnowledgePage({ params }: { params: Promise<{ star
 
       {/* 页脚 */}
       <footer style={{ borderTop: '1px solid rgba(184,146,42,0.15)', padding: '20px 24px', textAlign: 'center', fontSize: '11px', color: 'var(--tx-3)', letterSpacing: '0.1em' }}>
-        <div style={{ marginBottom: '6px' }}>紫微研究 · 基于倪海厦正宗体系 · 仅供学习参考</div>
+        <div style={{ marginBottom: '6px' }}>Astrolabe 星盘仪 · 星曜资料源自紫微研究</div>
         <div style={{ opacity: 0.85 }}>本平台不构成任何医疗、投资、法律或重大决策建议</div>
       </footer>
     </div>
@@ -302,7 +317,7 @@ function Section({ title, children, gradient, minimal }: { title: string; childr
       <div style={{
         background: gradient
           ? 'linear-gradient(135deg, rgba(212,169,72,0.12) 0%, rgba(184,146,42,0.04) 100%)'
-          : 'white',
+          : 'var(--bg-card)',
         border: '1px solid rgba(184,146,42,0.15)',
         borderRadius: '10px',
         padding: minimal ? '14px 18px' : '20px 22px',

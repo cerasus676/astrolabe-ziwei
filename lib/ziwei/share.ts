@@ -1,5 +1,19 @@
 import type { BirthFormState } from '@/components/BirthForm';
 import type { BirthInfo } from './types';
+import { lunarToSolar } from './lunar-solar';
+
+export function getBirthSolarDate(form: BirthFormState) {
+  const year = Number(form.year);
+  const month = Number(form.month);
+  const day = Number(form.day);
+  if (form.calendar === 'lunar') return lunarToSolar(year, month, day, form.isLeapMonth);
+  if (!year || !month || !day) return null;
+
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
+    ? { year, month, day }
+    : null;
+}
 import { branchFromSolarMinutes, resolveZiweiDayOffset, shiftGregorianDate } from './true-solar-time';
 
 /** 根据北京时间 + 经度计算真太阳时时辰支 (0-11) */
@@ -19,9 +33,10 @@ export function calcTrueSolarBranch(clockHour: number, clockMinute: number, long
  * 这与「时辰支同为子(0)」并不冲突——子时分早晚两段，需要在日期上区分。
  */
 export function formToBirthInfo(form: BirthFormState): BirthInfo {
-  let y = parseInt(form.year) || 0;
-  let m = parseInt(form.month) || 0;
-  let d = parseInt(form.day) || 0;
+  const date = getBirthSolarDate(form);
+  if (!date) throw new RangeError('所选出生日期不存在。');
+
+  let { year: y, month: m, day: d } = date;
   let hour = 0;
 
   // 晚子时换日按真太阳时判定，与时辰支同一口径（见 true-solar-time.ts 的 resolveZiweiDayOffset）。
@@ -54,6 +69,10 @@ export function formToSearchParams(form: BirthFormState): URLSearchParams {
   p.set('y', form.year);
   p.set('m', form.month);
   p.set('d', form.day);
+  if (form.calendar === 'lunar') {
+    p.set('cal', 'lunar');
+    if (form.isLeapMonth) p.set('leap', '1');
+  }
   if (form.unknownTime) {
     p.set('u', '1');
   } else {
@@ -78,6 +97,7 @@ export function searchParamsToForm(params: URLSearchParams): Partial<BirthFormSt
     year,
     month,
     day,
+    ...(params.get('cal') === 'lunar' ? { calendar: 'lunar' as const, isLeapMonth: params.get('leap') === '1' } : {}),
     unknownTime: params.get('u') === '1',
     clockHour: params.get('h') || '8',
     clockMinute: params.get('mi') || '0',

@@ -5,13 +5,16 @@ import type { BirthInfo } from '@/lib/ziwei/types';
 import { SHICHEN } from '@/lib/ziwei/constants';
 import { useTheme } from '@/components/ThemeProvider';
 import { PROVINCES } from '@/lib/ziwei/cities';
-import { formToBirthInfo, calcTrueSolarBranch } from '@/lib/ziwei/share';
+import { lunarMonthDayCount } from '@/lib/ziwei/lunar-solar';
+import { formToBirthInfo, calcTrueSolarBranch, getBirthSolarDate } from '@/lib/ziwei/share';
 
 export interface BirthFormState {
   name: string;
   year: string;
   month: string;
   day: string;
+  calendar?: 'solar' | 'lunar';
+  isLeapMonth?: boolean;
   clockHour: string;
   clockMinute: string;
   unknownTime: boolean;
@@ -22,7 +25,8 @@ export interface BirthFormState {
 }
 
 interface BirthFormProps {
-  onSubmit: (info: BirthInfo) => void;
+  onSubmit?: (info: BirthInfo) => void;
+  title?: string;
   loading?: boolean;
   initialData?: Partial<BirthFormState>;
   onFormSave?: (data: BirthFormState) => void;
@@ -32,14 +36,7 @@ interface BirthFormProps {
 
 const SHICHEN_NAMES = ['子', '丑', '寅', '卯', '辰', '巳', '午', '未', '申', '酉', '戌', '亥'];
 
-/** 检查日期是否合法 */
-function isValidDate(y: number, m: number, d: number): boolean {
-  if (!y || !m || !d) return false;
-  const date = new Date(y, m - 1, d);
-  return date.getFullYear() === y && date.getMonth() === m - 1 && date.getDate() === d;
-}
-
-export default function BirthForm({ onSubmit, loading, initialData, onFormSave, hideSubmit }: BirthFormProps) {
+export default function BirthForm({ onSubmit, title = '出生资料', loading, initialData, onFormSave, hideSubmit }: BirthFormProps) {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
 
@@ -48,6 +45,8 @@ export default function BirthForm({ onSubmit, loading, initialData, onFormSave, 
     year: initialData?.year ?? '',
     month: initialData?.month ?? '',
     day: initialData?.day ?? '',
+    calendar: initialData?.calendar ?? 'solar',
+    isLeapMonth: initialData?.isLeapMonth ?? false,
     clockHour: initialData?.clockHour ?? '8',
     clockMinute: initialData?.clockMinute ?? '0',
     unknownTime: initialData?.unknownTime ?? false,
@@ -63,8 +62,7 @@ export default function BirthForm({ onSubmit, loading, initialData, onFormSave, 
   // 表单状态变化时实时同步给父级（合盘等场景下父级靠这个收集双方数据）
   useEffect(() => {
     onFormSave?.({ ...form });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form]);
+  }, [form, onFormSave]);
 
   const cityList = useMemo(() => {
     const prov = PROVINCES.find(p => p.name === form.province);
@@ -88,13 +86,16 @@ export default function BirthForm({ onSubmit, loading, initialData, onFormSave, 
   const m = parseInt(form.month) || 0;
   const d = parseInt(form.day) || 0;
 
+  const isLunar = form.calendar === 'lunar';
+  const hasLeapMonth = isLunar && lunarMonthDayCount(y, m, true) > 0;
+
   const errors = {
     year: !form.year ? '请选择出生年份'
       : y < 1900 || y > 2026 ? '年份范围：1900–2026'
       : '',
     month: !form.month ? '请选择月份' : '',
     day: !form.day ? '请选择日期'
-      : form.year && form.month && !isValidDate(y, m, d) ? `${m}月没有${d}日`
+      : form.year && form.month && !getBirthSolarDate(form) ? '所选月份没有这一天'
       : '',
   };
   const hasError = Object.values(errors).some(Boolean);
@@ -112,7 +113,7 @@ export default function BirthForm({ onSubmit, loading, initialData, onFormSave, 
   const showSummary = steps[0] && steps[2] && !hasError;
   const summaryText = showSummary
     ? [
-        `${y}年${m}月${d}日`,
+        `${isLunar ? '农历' : '公历'} ${y}年${isLunar && form.isLeapMonth ? '闰' : ''}${m}月${d}日`,
         form.city || (form.province ? form.province : ''),
         form.unknownTime ? '时辰不详' : `${SHICHEN_NAMES[branch]}时`,
         form.gender === 'male' ? '男' : '女',
@@ -139,7 +140,7 @@ export default function BirthForm({ onSubmit, loading, initialData, onFormSave, 
     onFormSave?.({ ...form });
     // 统一走 lib/ziwei/share.ts 的转换：它负责晚子时换日（23:00–23:59 按次日排盘）。
     // 在这里手拼 BirthInfo 会绕过这条规则，使 /chart 与 /heming 对同一份输入排出相差一天的盘。
-    onSubmit(formToBirthInfo(form));
+    onSubmit?.(formToBirthInfo(form));
   };
 
   // ─── 样式变量 ────────────────────────────────────────────
@@ -165,7 +166,7 @@ export default function BirthForm({ onSubmit, loading, initialData, onFormSave, 
     border: `1px solid ${inputBorder}`,
     color: inputClr,
     borderRadius: '14px',
-    padding: '10px 14px',
+    padding: '10px 8px',
     fontSize: '13px',
     width: '100%',
     outline: 'none',
@@ -200,11 +201,11 @@ export default function BirthForm({ onSubmit, loading, initialData, onFormSave, 
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
-      style={{ background: bg, border: `1px solid ${border}`, borderRadius: '24px', padding: '28px', backdropFilter: 'blur(20px)' }}
+      style={{ background: bg, border: `1px solid ${border}`, borderRadius: '24px', padding: 'clamp(14px, 4vw, 24px)', minWidth: 0, backdropFilter: 'blur(20px)' }}
     >
       {/* 标题 */}
       <h3 style={{ color: goldText, fontSize: '12px', letterSpacing: '0.4em', textAlign: 'center', marginBottom: '20px', fontWeight: 500 }}>
-        ── 输入生辰八字 ──
+        {title}
       </h3>
 
       {/* ── 进度条 ── */}
@@ -224,7 +225,8 @@ export default function BirthForm({ onSubmit, loading, initialData, onFormSave, 
         <label style={{ display: 'block', fontSize: '11px', color: labelClr, marginBottom: '6px', letterSpacing: '0.05em' }}>姓名（可选）</label>
         <input
           type="text"
-          placeholder="请输入姓名"
+          aria-label="姓名（可选）"
+          placeholder="姓名或代称"
           value={form.name}
           onChange={e => setForm({ ...form, name: e.target.value })}
           style={inputStyle}
@@ -235,12 +237,25 @@ export default function BirthForm({ onSubmit, loading, initialData, onFormSave, 
 
       {/* ── 出生日期 ── */}
       <div style={{ marginBottom: '16px' }}>
-        <label style={{ display: 'block', fontSize: '11px', color: labelClr, marginBottom: '6px', letterSpacing: '0.05em' }}>出生日期（公历）</label>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+        <div style={{ display: 'grid', gap: '6px', marginBottom: '8px' }}>
+          <label style={{ color: labelClr, fontSize: '12px' }}>
+            出生日期历法
+            <select
+              value={form.calendar}
+              onChange={e => setForm({ ...form, calendar: e.target.value === 'lunar' ? 'lunar' : 'solar', month: '', day: '', isLeapMonth: false })}
+              style={{ ...inputStyle, marginTop: '6px' }}
+            >
+              <option value="solar">公历</option>
+              <option value="lunar">农历</option>
+            </select>
+          </label>
+        </div>
+        <div className="grid grid-cols-3 gap-2 [&_select]:px-1.5 sm:[&_select]:px-3">
           <div>
             <select
+              aria-label="出生年份"
               value={form.year}
-              onChange={e => { setForm({ ...form, year: e.target.value }); setTouched(t => ({ ...t, year: true })); }}
+              onChange={e => { setForm({ ...form, year: e.target.value, isLeapMonth: false }); setTouched(t => ({ ...t, year: true })); }}
               style={showErr('year') && errors.year ? errorInputStyle : inputStyle}
               required
             >
@@ -253,8 +268,9 @@ export default function BirthForm({ onSubmit, loading, initialData, onFormSave, 
           </div>
           <div>
             <select
+              aria-label="出生月份"
               value={form.month}
-              onChange={e => { setForm({ ...form, month: e.target.value }); setTouched(t => ({ ...t, month: true })); }}
+              onChange={e => { setForm({ ...form, month: e.target.value, isLeapMonth: false }); setTouched(t => ({ ...t, month: true })); }}
               style={showErr('month') && errors.month ? errorInputStyle : inputStyle}
               required
             >
@@ -267,19 +283,30 @@ export default function BirthForm({ onSubmit, loading, initialData, onFormSave, 
           </div>
           <div>
             <select
+              aria-label="出生日期"
               value={form.day}
               onChange={e => { setForm({ ...form, day: e.target.value }); setTouched(t => ({ ...t, day: true })); }}
               style={showErr('day') && errors.day ? errorInputStyle : inputStyle}
               required
             >
               <option value="">日期</option>
-              {Array.from({ length: 31 }, (_, i) => i + 1).map(dy => (
+              {Array.from({ length: isLunar ? 30 : 31 }, (_, i) => i + 1).map(dy => (
                 <option key={dy} value={String(dy)}>{dy} 日</option>
               ))}
             </select>
             <FieldError msg={showErr('day') ? errors.day : ''} />
           </div>
         </div>
+        {hasLeapMonth && (
+          <label className="mt-2 flex items-center gap-2 text-sm" style={{ color: labelClr }}>
+            <input
+              type="checkbox"
+              checked={form.isLeapMonth}
+              onChange={e => setForm({ ...form, isLeapMonth: e.target.checked })}
+            />
+            闰月
+          </label>
+        )}
       </div>
 
       {/* ── 出生地点 ── */}
@@ -287,6 +314,7 @@ export default function BirthForm({ onSubmit, loading, initialData, onFormSave, 
         <label style={{ display: 'block', fontSize: '11px', color: labelClr, marginBottom: '6px', letterSpacing: '0.05em' }}>出生地点（用于真太阳时校正）</label>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
           <select
+            aria-label="出生省份"
             value={form.province}
             onChange={e => handleProvince(e.target.value)}
             style={inputStyle}
@@ -299,6 +327,7 @@ export default function BirthForm({ onSubmit, loading, initialData, onFormSave, 
             ))}
           </select>
           <select
+            aria-label="出生城市"
             value={form.city}
             onChange={e => handleCity(e.target.value)}
             disabled={!form.province}
@@ -343,6 +372,8 @@ export default function BirthForm({ onSubmit, loading, initialData, onFormSave, 
         <div style={{ borderRadius: '14px', padding: '12px', background: panelBg, border: `1px solid ${panelBorder}`, opacity: form.unknownTime ? 0.45 : 1, pointerEvents: form.unknownTime ? 'none' : 'auto', transition: 'opacity 0.2s' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
             <select
+              aria-label="出生小时"
+              disabled={form.unknownTime}
               value={form.clockHour}
               onChange={e => setForm({ ...form, clockHour: e.target.value })}
               style={inputStyle}
@@ -352,6 +383,8 @@ export default function BirthForm({ onSubmit, loading, initialData, onFormSave, 
               ))}
             </select>
             <select
+              aria-label="出生分钟"
+              disabled={form.unknownTime}
               value={form.clockMinute}
               onChange={e => setForm({ ...form, clockMinute: e.target.value })}
               style={inputStyle}
@@ -399,6 +432,7 @@ export default function BirthForm({ onSubmit, loading, initialData, onFormSave, 
               <motion.button
                 key={g}
                 type="button"
+                aria-pressed={active}
                 onClick={() => setForm({ ...form, gender: g })}
                 whileTap={{ scale: 0.97 }}
                 style={{
@@ -482,7 +516,7 @@ export default function BirthForm({ onSubmit, loading, initialData, onFormSave, 
             />
             紫微起盘中…
           </span>
-        ) : '立即起盘 · 解命运密码'}
+        ) : '生成命盘'}
       </motion.button>}
     </motion.form>
   );

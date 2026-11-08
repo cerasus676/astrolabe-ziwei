@@ -1,3 +1,24 @@
+# Astrolabe 星盘仪
+
+基于 [紫微研究](https://github.com/Renhuai123/ziwei-doushu) 的紫微斗数静态网站。单人排盘、双人命盘对照、古籍搜索与星曜百科均可在浏览器中使用。出生资料仅用于当前页面内的排盘计算。代码沿用原项目的 [MIT 许可证](./LICENSE)。
+
+## 部署到 Cloudflare Pages
+
+在 Cloudflare Pages 选择 Git 集成，连接本仓库的 `main` 分支。框架预设选 **Next.js (Static HTML Export)**，仓库根目录留空，构建命令填 `npm run build`，构建输出目录填 `out`。默认 Pages v3 构建环境即可。如需使用正式域名作为站点地图的网址，可设置 `NEXT_PUBLIC_SITE_URL`。
+
+也可在本地运行以下命令，再使用 Pages Direct Upload 上传生成的 `out` 目录。
+
+```sh
+npm ci
+npm run typecheck
+npm test
+npm run build
+```
+
+以下保留上游项目说明。
+
+---
+
 <div align="center">
 
 # 紫微斗数 · 开源排盘引擎

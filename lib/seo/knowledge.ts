@@ -127,7 +127,7 @@ export function getKnowledge(star: string, topic: TopicKey): KnowledgeData {
     topicLabel: TOPIC_LABEL[topic],
     palaceName: TOPIC_PALACE_NAME[topic],
     parsed: parseStarContent(content),
-    exists: Boolean(content),
+    exists: Boolean(content) || (topic === 'overview' && Object.hasOwn(STAR_BRIEF_SEO, star)),
   };
 }
 
